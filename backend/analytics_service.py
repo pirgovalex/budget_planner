@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict, OrderedDict
+from dateutil.relativedelta import relativedelta
 from .models import Transaction
 
 class AnalyticsService:
@@ -8,7 +9,7 @@ class AnalyticsService:
         self.db = db
     
     def get_spending_by_category(self, user_id: int, days: int = 30) -> dict:
-        start_date = datetime.utcnow() - timedelta(days=days)
+        start_date = datetime.now(timezone.utc) - timedelta(days=days)
         
         transactions = self.db.query(Transaction).filter(
             Transaction.user_id == user_id,
@@ -25,7 +26,7 @@ class AnalyticsService:
     
     def get_monthly_summary(self, user_id: int) -> dict:
         # Get data for last 6 months
-        start_date = datetime.utcnow() - timedelta(days=180)
+        start_date = datetime.now(timezone.utc) - relativedelta(months=6)
         
         transactions = self.db.query(Transaction).filter(
             Transaction.user_id == user_id,
@@ -36,7 +37,7 @@ class AnalyticsService:
         
         # Initialize last 6 months
         for i in range(5, -1, -1):
-            date = datetime.utcnow() - timedelta(days=i*30)
+            date = datetime.now(timezone.utc) - relativedelta(months=i)
             month_key = date.strftime('%Y-%m')
             summary[month_key] = {"income": 0.0, "expenses": 0.0, "net": 0.0}
             
@@ -54,7 +55,7 @@ class AnalyticsService:
     
     def get_predictions(self, user_id: int) -> dict:
         # Simple average prediction without pandas/scikit-learn
-        start_date = datetime.utcnow() - timedelta(days=90)
+        start_date = datetime.now(timezone.utc) - timedelta(days=90)
         
         transactions = self.db.query(Transaction).filter(
             Transaction.user_id == user_id,

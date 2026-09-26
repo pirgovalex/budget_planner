@@ -1,11 +1,11 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from datetime import datetime
 from typing import Optional
 
 class UserCreate(BaseModel):
-    username: str
+    username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=8)
 
 class UserLogin(BaseModel):
     username: str
@@ -17,8 +17,7 @@ class UserResponse(BaseModel):
     email: str
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class Token(BaseModel):
     access_token: str
@@ -29,15 +28,15 @@ class TokenData(BaseModel):
 
 class TransactionCreate(BaseModel):
     date: datetime
-    amount: float
-    description: str
+    amount: float = Field(..., gt=0)
+    description: str = Field(..., min_length=1, max_length=255)
     category: Optional[str] = None
     is_expense: bool = True
 
 class TransactionUpdate(BaseModel):
     date: Optional[datetime] = None
-    amount: Optional[float] = None
-    description: Optional[str] = None
+    amount: Optional[float] = Field(None, gt=0)
+    description: Optional[str] = Field(None, min_length=1, max_length=255)
     category: Optional[str] = None
     is_expense: Optional[bool] = None
 
@@ -51,19 +50,18 @@ class TransactionResponse(BaseModel):
     is_expense: bool
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class GoalCreate(BaseModel):
-    name: str
-    target_amount: float
-    current_amount: float = 0.0
+    name: str = Field(..., min_length=1, max_length=100)
+    target_amount: float = Field(..., gt=0)
+    current_amount: float = Field(0.0, ge=0)
     deadline: Optional[datetime] = None
 
 class GoalUpdate(BaseModel):
-    name: Optional[str] = None
-    target_amount: Optional[float] = None
-    current_amount: Optional[float] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    target_amount: Optional[float] = Field(None, gt=0)
+    current_amount: Optional[float] = Field(None, ge=0)
     deadline: Optional[datetime] = None
 
 class GoalResponse(BaseModel):
@@ -77,8 +75,7 @@ class GoalResponse(BaseModel):
     progress: float
     remaining: float
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AnalyticsSummary(BaseModel):
     total_income: float

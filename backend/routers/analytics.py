@@ -8,13 +8,14 @@ from ..analytics_service import AnalyticsService
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
+def get_analytics_service(db: Session = Depends(get_db)):
+    return AnalyticsService(db)
+
 @router.get("/summary", response_model=AnalyticsSummary)
 def get_analytics_summary(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    service: AnalyticsService = Depends(get_analytics_service)
 ):
-    service = AnalyticsService(db)
-    
     totals = service.get_financial_summary(current_user.id)
     spending_by_category = service.get_spending_by_category(current_user.id)
     monthly_summary = service.get_monthly_summary(current_user.id)
@@ -31,23 +32,20 @@ def get_analytics_summary(
 def get_spending_by_category(
     days: int = 30,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    service: AnalyticsService = Depends(get_analytics_service)
 ):
-    service = AnalyticsService(db)
     return service.get_spending_by_category(current_user.id, days)
 
 @router.get("/monthly-summary")
 def get_monthly_summary(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    service: AnalyticsService = Depends(get_analytics_service)
 ):
-    service = AnalyticsService(db)
     return service.get_monthly_summary(current_user.id)
 
 @router.get("/predictions")
 def get_predictions(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    service: AnalyticsService = Depends(get_analytics_service)
 ):
-    service = AnalyticsService(db)
     return service.get_predictions(current_user.id)

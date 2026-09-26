@@ -1,8 +1,6 @@
 from datetime import datetime
 from typing import List, Optional
-import asyncio
 import random
-from concurrent.futures import ThreadPoolExecutor
 from huggingface_hub import InferenceClient
 from .config import settings
 from .models import Transaction, Goal
@@ -13,40 +11,33 @@ class LLMService:
         self.client = InferenceClient(token=token) if token else None
         self.model = "meta-llama/Llama-3.2-3B-Instruct"
 
-    async def _query_llm(self, prompt: str) -> str:
-        # Check if we have a client; if not, return mock data immediately (handled by caller fallback usually, 
-        # but here we can't generic mock easily without context, so we'll handle mocks in specific methods).
-        # However, if we are here, we expect real generation.
+    def _query_llm(self, prompt: str) -> str:
         if not self.client:
             raise Exception("No Client")
         
-        loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor() as pool:
-            response = await loop.run_in_executor(
-                pool,
-                lambda: self.client.text_generation(
-                    prompt,
-                    model=self.model,
-                    max_new_tokens=500,
-                    temperature=0.7
-                )
-            )
+        response = self.client.text_generation(
+            prompt,
+            model=self.model,
+            max_new_tokens=500,
+            temperature=0.7
+        )
         return response
 
-    async def categorize_transaction(self, description: str) -> str:
+    def categorize_transaction(self, description: str) -> str:
+        valid_categories = ['Income', 'Bills', 'Food', 'Entertainment', 'Transport', 'Health', 'Shopping', 'Other']
+
         if not self.client:
-            # Simple keyword matching mock
             desc_lower = description.lower()
             if any(x in desc_lower for x in ['uber', 'bus', 'train', 'gas', 'fuel']): return 'Transport'
             if any(x in desc_lower for x in ['food', 'burger', 'pizza', 'grocery', 'market']): return 'Food'
             if any(x in desc_lower for x in ['netflix', 'spotify', 'cinema', 'game']): return 'Entertainment'
             if any(x in desc_lower for x in ['salary', 'deposit']): return 'Income'
             if any(x in desc_lower for x in ['pharmacy', 'doctor', 'med']): return 'Health'
-            return "Miscellaneous"
+            return "Other"
             
         prompt = f"""
         Categorize this transaction description into exactly one of these categories:
-        Food, Transport, Utilities, Entertainment, Shopping, Health, Travel, Income, Miscellaneous
+        {', '.join(valid_categories)}
         
         Description: "{description}"
         
@@ -54,12 +45,23 @@ class LLMService:
         """
         
         try:
-            category = await self._query_llm(prompt)
-            return category.strip().split('\n')[0]
+            category_response = self._query_llm(prompt).strip()
+            
+            # Direct match
+            for cat in valid_categories:
+                if cat.lower() == category_response.lower():
+                    return cat
+            
+            # Substring match (in case of conversational response)
+            for cat in valid_categories:
+                if cat.lower() in category_response.lower():
+                    return cat
+                    
+            return "Other"
         except:
-            return "Miscellaneous"
+            return "Other"
 
-    async def get_budget_recommendations(self, spending_data: dict) -> str:
+    def get_budget_recommendations(self, spending_data: dict) -> str:
         try:
             if not self.client: raise Exception("Mock Mode")
             
@@ -79,10 +81,9 @@ Top spending category: {top_category}
 
 Give specific actionable advice:"""
 
-            return await self._query_llm(prompt)
+            return self._query_llm(prompt)
             
         except Exception as e:
-            # Mock Response
             top_cat = "Food"
             if 'spending_by_category' in spending_data and spending_data['spending_by_category']:
                 top_cat = max(spending_data['spending_by_category'], key=spending_data['spending_by_category'].get)
@@ -92,7 +93,7 @@ Give specific actionable advice:"""
 • Track your daily small expenses, as they add up quickly.
 • Good job maintaining a diverse spending portfolio!"""
 
-    async def suggest_savings_plan(self, goals: List[Goal], current_savings: float) -> str:
+    def suggest_savings_plan(self, goals: List[Goal], current_savings: float) -> str:
         try:
             if not self.client: raise Exception("Mock Mode")
 
@@ -110,10 +111,9 @@ Current available savings: ${current_savings:.2f}
 
 Provide specific savings tips:"""
 
-            return await self._query_llm(prompt)
+            return self._query_llm(prompt)
             
         except Exception:
-            # Mock Response
             if not goals: return "Set some goals to get started!"
             goal_name = goals[0].name
             return f"""(Simulated AI) Savings Recommendations:

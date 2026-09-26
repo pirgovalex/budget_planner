@@ -40,7 +40,7 @@ def create_goal(
 ):
     db_goal = Goal(
         user_id=current_user.id,
-        **goal.dict()
+        **goal.model_dump()
     )
     db.add(db_goal)
     db.commit()
@@ -62,7 +62,7 @@ def update_goal(
     if not db_goal:
         raise HTTPException(status_code=404, detail="Goal not found")
     
-    update_data = goal.dict(exclude_unset=True)
+    update_data = goal.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_goal, key, value)
     

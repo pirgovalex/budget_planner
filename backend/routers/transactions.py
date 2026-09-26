@@ -8,8 +8,12 @@ from ..database import get_db
 from ..models import User, Transaction
 from ..schemas import TransactionCreate, TransactionUpdate, TransactionResponse
 from ..auth import get_current_user
+from ..llm_service import LLMService
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
+
+def get_llm_service():
+    return LLMService()
 
 @router.get("/", response_model=List[TransactionResponse])
 def get_transactions(
@@ -32,20 +36,18 @@ def get_transactions(
     return transactions
 
 @router.post("/", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED)
-async def create_transaction(
+def create_transaction(
     transaction: TransactionCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    llm_service: LLMService = Depends(get_llm_service)
 ):
-    from ..llm_service import LLMService
-    
     if not transaction.category:
-        llm_service = LLMService()
-        transaction.category = await llm_service.categorize_transaction(transaction.description)
+        transaction.category = llm_service.categorize_transaction(transaction.description)
     
     db_transaction = Transaction(
         user_id=current_user.id,
-        **transaction.dict()
+        **transaction.model_dump()
     )
     db.add(db_transaction)
     db.commit()
@@ -68,7 +70,7 @@ def update_transaction(
     if not db_transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
     
-    update_data = transaction.dict(exclude_unset=True)
+    update_data = transaction.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_transaction, key, value)
     
@@ -95,35 +97,47 @@ def delete_transaction(
     return None
 
 @router.post("/import")
-async def import_transactions(
+def import_transactions(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    llm_service: LLMService = Depends(get_llm_service)
 ):
-    from ..llm_service import LLMService
-    
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="File must be a CSV")
     
-    contents = await file.read()
-    csv_data = csv.DictReader(io.StringIO(contents.decode('utf-8')))
+    try:
+        contents = file.file.read()
+        csv_text = contents.decode('utf-8')
+        csv_data = list(csv.DictReader(io.StringIO(csv_text)))
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="File encoding must be UTF-8")
     
-    llm_service = LLMService()
     imported_count = 0
     
-    for row in csv_data:
-        category = row.get('category') or await llm_service.categorize_transaction(row['description'])
-        
-        db_transaction = Transaction(
-            user_id=current_user.id,
-            date=datetime.fromisoformat(row['date']),
-            amount=float(row['amount']),
-            description=row['description'],
-            category=category,
-            is_expense=row.get('is_expense', 'true').lower() == 'true'
-        )
-        db.add(db_transaction)
-        imported_count += 1
+    for row_idx, row in enumerate(csv_data, start=1):
+        try:
+            description = row['description']
+            category = row.get('category')
+            if not category:
+                try:
+                    category = llm_service.categorize_transaction(description)
+                except Exception:
+                    category = "Miscellaneous"
+            
+            db_transaction = Transaction(
+                user_id=current_user.id,
+                date=datetime.fromisoformat(row['date']),
+                amount=float(row['amount']),
+                description=description,
+                category=category,
+                is_expense=row.get('is_expense', 'true').lower() == 'true'
+            )
+            db.add(db_transaction)
+            imported_count += 1
+        except (ValueError, KeyError) as e:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=f"Error in row {row_idx}: {str(e)}")
     
     db.commit()
     return {"message": f"Successfully imported {imported_count} transactions"}

@@ -52,3 +52,4 @@ pnpm-debug.log*
 # Project Specific
 backend/transactions.csv
 backend/goals.json
+docs/

@@ -9,13 +9,18 @@ from ..analytics_service import AnalyticsService
 
 router = APIRouter(prefix="/ai", tags=["AI Insights"])
 
+def get_llm_service():
+    return LLMService()
+
+def get_analytics_service(db: Session = Depends(get_db)):
+    return AnalyticsService(db)
+
 @router.get("/insights")
-async def get_ai_insights(
+def get_ai_insights(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    llm_service: LLMService = Depends(get_llm_service),
+    analytics_service: AnalyticsService = Depends(get_analytics_service)
 ) -> dict:
-    llm_service = LLMService()
-    analytics_service = AnalyticsService(db)
     
     totals = analytics_service.get_financial_summary(current_user.id)
     spending_by_category = analytics_service.get_spending_by_category(current_user.id)
@@ -25,7 +30,7 @@ async def get_ai_insights(
         'spending_by_category': spending_by_category
     }
     
-    analysis = await llm_service.get_budget_recommendations(transactions_data)
+    analysis = llm_service.get_budget_recommendations(transactions_data)
     
     return {
         "insights": analysis,
@@ -35,20 +40,19 @@ async def get_ai_insights(
     }
 
 @router.get("/savings-recommendations")
-async def get_savings_recommendations(
+def get_savings_recommendations(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    llm_service: LLMService = Depends(get_llm_service),
+    analytics_service: AnalyticsService = Depends(get_analytics_service)
 ) -> Dict[str, str]:
     from ..models import Goal
-    
-    llm_service = LLMService()
-    analytics_service = AnalyticsService(db)
     
     goals = db.query(Goal).filter(Goal.user_id == current_user.id).all()
     
     totals = analytics_service.get_financial_summary(current_user.id)
     current_savings = totals['net_savings']
     
-    recommendations = await llm_service.suggest_savings_plan(goals, current_savings)
+    recommendations = llm_service.suggest_savings_plan(goals, current_savings)
     
     return {"recommendations": recommendations}
